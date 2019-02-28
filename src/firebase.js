@@ -1,4 +1,6 @@
-import firebase from 'firebase';
+//import firebase from 'firebase' // for dev
+import firebase from 'firebase/app'
+
 // Initialize Firebase
 const config = {
   apiKey: '',

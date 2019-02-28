@@ -1,26 +1,22 @@
 import React, { Component } from 'react';
 import firebase from '../firebase.js';
+import 'firebase/auth';
+import 'firebase/database';
 import $ from 'jquery';
-
-const LinkImage = function(item) {
-  //console.log(item);
-  if (item && item.image) {
-    return { backgroundImage: 'url(' + item.image + ')' };
-  }
-  return { backgroundImage: 'url(./images/fallbackImage.jpg)' };
-};
+import Header from './header';
+const Favico = require('../favico.js');
 
 function LinkTitle(props) {
   const unread = props.unread;
   const title = props.title;
   if (unread) {
     return (
-      <h4>
+      <h5 className="card-title">
         {title} <span className="badge badge-secondary">New</span>
-      </h4>
+      </h5>
     );
   } else {
-    return <h4>{title}</h4>;
+    return <h5 className="card-title">{title}</h5>;
   }
 }
 
@@ -50,41 +46,136 @@ function SuccessAlert(props) {
   }
 }
 
+function DaysSinceShared(props) {
+  if (!props || !props.dateAdded) {
+    return '';
+  }
+  const dateAdded = new Date(props.dateAdded); //new Date('02/02/2019');
+  const today = new Date();
+  const days = Math.floor(
+    (Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) -
+      Date.UTC(
+        dateAdded.getFullYear(),
+        dateAdded.getMonth(),
+        dateAdded.getDate()
+      )) /
+      (1000 * 60 * 60 * 24)
+  );
+  //console.log(days);
+  if (days > 0) {
+    return <p className="cardText dateAdded">Shared {days} days ago</p>;
+  }
+  return <p className="cardText dateAdded">Shared today</p>;
+}
+
+function FilterList(props) {
+  const activeTab = props.activeTab;
+  const newClass = activeTab === 'new' ? 'active' : '';
+  const allClass = activeTab === 'all' ? 'active' : '';
+  const seenClass = activeTab === 'seen' ? 'active' : '';
+  const filterByTab = props.filterByTab;
+  return (
+    <ul className="nav nav-tabs list-filter">
+      <li className="nav-item">
+        <span
+          className={'nav-link ' + newClass}
+          onClick={() => filterByTab('new')}
+        >
+          New
+        </span>
+      </li>
+
+      <li className="nav-item">
+        <span
+          className={'nav-link ' + allClass}
+          onClick={() => filterByTab('all')}
+        >
+          All
+        </span>
+      </li>
+
+      <li className="nav-item">
+        <span
+          className={'nav-link ' + seenClass}
+          href="#"
+          onClick={() => filterByTab('seen')}
+        >
+          Seen
+        </span>
+      </li>
+    </ul>
+  );
+}
+
 function UserLinks(props) {
   const links = props.links;
   const user = props.user;
   const openLink = props.openLink;
   const removeItem = props.removeItem;
+  const activeTab = props.activeTab;
+  const filterByTab = props.filterByTab;
 
   if (links.length === 0) {
-    return <h3>You're all caught up!</h3>;
+    return (
+      <div>
+        <FilterList
+          activeTab={activeTab}
+          filterByTab={filterByTab}
+          hideAllBtn={links.length === 0}
+        />
+        <h3>You're all caught up!</h3>
+      </div>
+    );
   } else {
     return (
       <div>
-        <h3>
-          Have You Read This Yet?{' '}
-          <span className="badge badge-light">{links.length}</span>
-        </h3>
+        <FilterList activeTab={activeTab} filterByTab={filterByTab} />
 
         <div className="link-list-container container">
           {links.map(item => {
-            return (
-              <div className="link row" key={item.id}>
-                <div className="image col-md-2" style={LinkImage(item)} />
-
-                <div
-                  className="content col-md-9 col-sm-12"
-                  onClick={() => openLink(item, user)}
-                >
-                  <LinkTitle unread={item.unread} title={item.title} />
-                  <p>{item.url}</p>
+            // Only show delete on read items
+            if (item.unread) {
+              return (
+                <div className="card new" key={item.id}>
+                  <div className="card-body">
+                    <LinkTitle unread={item.unread} title={item.title} />
+                    <p className="cardText url">{item.url}</p>
+                    <DaysSinceShared dateAdded={item.dateAdded} />
+                    <p className="cardText context">{item.context}</p>
+                    <span
+                      className="btn btn-primary"
+                      onClick={() => openLink(item, user)}
+                    >
+                      Check it out
+                    </span>
+                  </div>
                 </div>
-                <div
-                  className="delete col-md-1 col-sm-12"
-                  onClick={() => removeItem(user + '/' + item.id)}
-                />
-              </div>
-            );
+              );
+            } else {
+              return (
+                <div className="card" key={item.id}>
+                  <div className="card-body">
+                    <LinkTitle unread={item.unread} title={item.title} />
+                    <p className="cardText url">{item.url}</p>
+                    <DaysSinceShared dateAdded={item.dateAdded} />
+                    <p className="cardText context">{item.context}</p>
+                    <span
+                      className="btn btn-primary"
+                      onClick={() => openLink(item, user)}
+                    >
+                      Check it out
+                    </span>
+                    &nbsp;
+                    <span
+                      className="btn btn-danger"
+                      onClick={() => removeItem(item.id)}
+                    >
+                      Delete
+                    </span>
+                  </div>
+                </div>
+              );
+            }
           })}
         </div>
       </div>
@@ -96,35 +187,69 @@ class Links extends Component {
   constructor(props) {
     super();
     this.state = {
-      user: props.match.params.user,
+      user: '',
       newLink: '',
-      sendToUsername: '',
+      linkContext: '',
       links: [],
+      filteredLinks: [],
+      sendToUsername: '',
       error: '',
-      success: ''
+      success: '',
+      activeTab: '',
+      users: []
     };
     this.handleChange = this.handleChange.bind(this);
     this.handleSubmit = this.handleSubmit.bind(this);
+    this.filterByTab = this.filterByTab.bind(this);
+    this.favicon = new Favico({
+      animation: 'pop'
+    });
   }
   handleChange(e) {
     this.setState({
       [e.target.name]: e.target.value
     });
+    //console.log(e.target.name, e.target.value);
   }
   handleSubmit(e) {
     e.preventDefault();
+
+    if (this.state.sendToUsername === '') {
+      this.setState({
+        error: 'No user to send to :('
+      });
+      setTimeout(
+        function() {
+          this.setState({
+            error: ''
+          });
+        }.bind(this),
+        3000
+      );
+      return;
+    }
 
     var valid = /^(ftp|http|https):\/\/[^ "]+$/.test(this.state.newLink);
     if (!valid) {
       this.setState({
         error: 'Stop being rude and enter a valid URL, punk.'
       });
+
+      setTimeout(
+        function() {
+          this.setState({
+            error: ''
+          });
+        }.bind(this),
+        3000
+      );
+
       return;
     }
 
     const url = this.state.newLink;
     const urlEncoded = encodeURIComponent(url);
-    const apiKey = '5b2e9dff6e8b4969467dfd90';
+    const apiKey = '';
 
     // The entire request is just a simple get request with optional query parameters
     const requestUrl =
@@ -149,22 +274,25 @@ class Links extends Component {
           }
         }
 
-        const itemsRef = firebase
-          .database()
-          .ref('links/' + this.state.sendToUsername);
+        const itemsRef = firebase.database().ref('links/');
 
         const item = {
           url: this.state.newLink,
           title: title,
           image: image,
-          unread: true
+          unread: true,
+          context: this.state.linkContext,
+          dateAdded: new Date().getTime(),
+          sharedBy: this.state.user,
+          sharedTo: this.state.sendToUsername
         };
 
         itemsRef.push(item);
 
         this.setState({
           newLink: '',
-          success: 'Woo! Your link was shared.'
+          success: 'Woo! Your link was shared.',
+          linkContext: ''
         });
 
         setTimeout(
@@ -180,7 +308,7 @@ class Links extends Component {
   }
   openLink(item, user) {
     // Mark as read
-    const itemRef = firebase.database().ref('links/' + user + '/' + item.id);
+    const itemRef = firebase.database().ref('links/' + item.id);
     itemRef.update({ unread: false });
 
     // Open new window
@@ -189,8 +317,9 @@ class Links extends Component {
   fetchLinksForUser(user) {
     const linksRef = firebase
       .database()
-      .ref('links/' + user)
-      .orderByKey();
+      .ref('links/')
+      .orderByChild('sharedTo')
+      .equalTo(user);
     linksRef.on('value', snapshot => {
       let links = snapshot.val();
       let newState = [];
@@ -200,63 +329,164 @@ class Links extends Component {
           url: links[link].url,
           title: links[link].title,
           image: links[link].image,
-          site_name: links[link].site_name,
-          unread: links[link].unread
+          unread: links[link].unread,
+          context: links[link].context,
+          dateAdded: links[link].dateAdded
         });
       }
       newState.reverse();
+      this.setState(
+        {
+          links: newState
+        },
+        function() {
+          this.updateFavicon();
+          const filterBy =
+            this.state.activeTab === '' ? 'new' : this.state.activeTab;
+          this.filterByTab(filterBy);
+        }
+      );
+    });
+  }
+  fetchUsers(currentUsername) {
+    const usersRef = firebase.database().ref('users/');
+    usersRef.on('value', snapshot => {
+      let users = snapshot.val();
+      let newState = [];
+      for (let user in users) {
+        newState.push({
+          id: user,
+          username: users[user].username
+        });
+      }
+
+      const otherUsers = newState.filter(function(user) {
+        return user.username !== currentUsername;
+      });
+
       this.setState({
-        links: newState
+        users: otherUsers,
+        sendToUsername: otherUsers[0].username
       });
     });
   }
+  updateFavicon() {
+    const unreadItems = this.state.links.filter(function(link) {
+      return link.unread;
+    });
+    if (unreadItems.length > 0) {
+      this.favicon.badge(unreadItems.length);
+    } else {
+      this.favicon.reset();
+    }
+  }
   componentDidMount() {
-    this.fetchLinksForUser(this.state.user);
+    const userId = firebase.auth().currentUser.uid;
+
+    const userRef = firebase.database().ref('users/' + userId);
+    userRef.on('value', snapshot => {
+      let user = snapshot.val();
+      //console.log(user.username);
+      this.setState({
+        user: user.username
+      });
+
+      this.fetchLinksForUser(user.username);
+      this.fetchUsers(user.username);
+    });
   }
   removeItem(itemId) {
-    const itemRef = firebase.database().ref('/links/' + itemId);
-    itemRef.remove();
+    if (window.confirm('Are you sure?')) {
+      const itemRef = firebase.database().ref('/links/' + itemId);
+      itemRef.remove();
+    }
   }
+  filterByTab(tabName) {
+    var filteredLinks = this.state.links;
 
+    if (tabName === 'new') {
+      filteredLinks = this.state.links.filter(function(link) {
+        return link.unread;
+      });
+    }
+
+    if (tabName === 'seen') {
+      filteredLinks = this.state.links.filter(function(link) {
+        return !link.unread;
+      });
+    }
+
+    this.setState({
+      activeTab: tabName,
+      filteredLinks: filteredLinks
+    });
+  }
   render() {
     return (
-      <div className="container links-container">
-        <div className="row">
-          <div className="col">
-            <h3>Enter URL</h3>
+      <div>
+        <Header history={this.props.history} />
 
-            <form onSubmit={this.handleSubmit}>
-              <div className="input-group mb-3">
-                <input
-                  type="text"
-                  className="form-control"
-                  name="newLink"
-                  onChange={this.handleChange}
-                  value={this.state.newLink}
-                />
-                <div className="input-group-append">
-                  <button
-                    className="btn btn-outline-secondary share-btn"
-                    type="submit"
+        <div className="container links-container">
+          <div className="row">
+            <div className="col-sm-12 col-md-6">
+              <form onSubmit={this.handleSubmit}>
+                <div className="form-group">
+                  <label>Share With</label>
+                  <select
+                    onChange={this.handleChange}
+                    className="custom-select"
+                    name="sendToUsername"
                   >
-                    Share
-                  </button>
+                    {this.state.users.map(user => {
+                      return (
+                        <option value={user.username} key={user.id}>
+                          {user.username}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
-              </div>
-            </form>
+                <div className="form-group">
+                  <label>What's the URL?</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    name="newLink"
+                    onChange={this.handleChange}
+                    value={this.state.newLink}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Why are you sharing this?</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    name="linkContext"
+                    onChange={this.handleChange}
+                    value={this.state.linkContext}
+                  />
+                </div>
+                <button className="btn  share-btn" type="submit">
+                  Share
+                </button>
+              </form>
 
-            <ErrorAlert errorText={this.state.error} />
+              <ErrorAlert errorText={this.state.error} />
+              <SuccessAlert successText={this.state.success} />
+            </div>
           </div>
-        </div>
 
-        <div className="row">
-          <div className="col">
-            <UserLinks
-              links={this.state.links}
-              user={this.state.user}
-              openLink={this.openLink}
-              removeItem={this.removeItem}
-            />
+          <div className="row">
+            <div className="col">
+              <UserLinks
+                links={this.state.filteredLinks}
+                user={this.state.user}
+                openLink={this.openLink}
+                removeItem={this.removeItem}
+                activeTab={this.state.activeTab}
+                filterByTab={this.filterByTab}
+              />
+            </div>
           </div>
         </div>
       </div>

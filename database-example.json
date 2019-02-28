@@ -1,0 +1,30 @@
+{
+  "links" : {
+    "00" : {
+      "context" : "Best burritos in Boston",
+      "image" : "https://cdn.vox-cdn.com/thumbor/crtwsnU1y2X2XmNYrUNzJoamGnY=/0x51:700x417/fit-in/1200x630/cdn.vox-cdn.com/uploads/chorus_asset/file/9782313/Burrito_Beef_1.jpg",
+      "sharedBy" : "nblaker",
+      "sharedTo" : "jblaker",
+      "title" : "Where to Eat Burritos in and Around Boston",
+      "unread" : false,
+      "url" : "https://boston.eater.com/maps/best-burritos-boston"
+    },
+    "01" : {
+      "context" : "A podcast you might like - comedians defend bad bands",
+      "image" : "https://assets.podomatic.net/ts/53/5a/a7/tomathakkar/pro/200x200_12053959.jpg",
+      "sharedBy" : "nblaker",
+      "sharedTo" : "jblaker",
+      "title" : "Stand By Your Band",
+      "unread" : true,
+      "url" : "https://standbyyourband.podomatic.com/"
+    }
+  },
+  "users" : {
+    "0123456789ABCDEFG" : {
+      "username" : "jblaker"
+    },
+    "ABCDEFG987654321" : {
+      "username" : "nblaker"
+    }
+  }
+}
